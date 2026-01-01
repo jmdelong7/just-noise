@@ -1,61 +1,59 @@
 import { useCallback, useRef, useState } from 'react';
-import { AudioContext } from 'react-native-audio-api';
+import { Platform } from 'react-native';
 import { BrownNoiseGenerator } from '../utils/brownNoise';
 
-const SAMPLE_RATE = 44100;
 const BUFFER_SIZE = 4096;
+
+// Use native AudioContext on web, react-native-audio-api on native
+const getAudioContext = (): AudioContext => {
+  if (Platform.OS === 'web') {
+    const WebAudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    return new WebAudioContext();
+  } else {
+    const { AudioContext } = require('react-native-audio-api');
+    return new AudioContext();
+  }
+};
 
 export function useBrownNoise() {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
   const generatorRef = useRef<BrownNoiseGenerator | null>(null);
-  const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
-  const isSchedulingRef = useRef(false);
-
-  const scheduleBuffer = useCallback(() => {
-    const ctx = audioContextRef.current;
-    const generator = generatorRef.current;
-
-    if (!ctx || !generator || !isSchedulingRef.current) return;
-
-    // Create a buffer with brown noise
-    const buffer = ctx.createBuffer(1, BUFFER_SIZE, SAMPLE_RATE);
-    const channelData = buffer.getChannelData(0);
-    generator.fillBuffer(channelData);
-
-    // Create source and connect to output
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-
-    // Schedule playback
-    source.start(ctx.currentTime);
-
-    // Schedule next buffer before this one ends
-    const bufferDuration = BUFFER_SIZE / SAMPLE_RATE;
-    setTimeout(() => {
-      if (isSchedulingRef.current) {
-        scheduleBuffer();
-      }
-    }, bufferDuration * 900); // Schedule slightly before buffer ends
-  }, []);
 
   const play = useCallback(() => {
     if (isPlaying) return;
 
-    // Create audio context
-    const ctx = new AudioContext();
+    // Create audio context and generator
+    const ctx = getAudioContext();
     audioContextRef.current = ctx;
     generatorRef.current = new BrownNoiseGenerator();
-    isSchedulingRef.current = true;
 
-    // Start scheduling buffers
-    scheduleBuffer();
+    // Create a ScriptProcessorNode for continuous audio generation
+    // This avoids clicking by providing seamless audio processing
+    const processor = ctx.createScriptProcessor(BUFFER_SIZE, 1, 1);
+    processorRef.current = processor;
+
+    processor.onaudioprocess = (event) => {
+      const output = event.outputBuffer.getChannelData(0);
+      const generator = generatorRef.current;
+
+      if (generator) {
+        generator.fillBuffer(output);
+      }
+    };
+
+    // Connect processor to output
+    processor.connect(ctx.destination);
+
     setIsPlaying(true);
-  }, [isPlaying, scheduleBuffer]);
+  }, [isPlaying]);
 
   const stop = useCallback(() => {
-    isSchedulingRef.current = false;
+    if (processorRef.current) {
+      processorRef.current.disconnect();
+      processorRef.current = null;
+    }
 
     if (audioContextRef.current) {
       audioContextRef.current.close();
