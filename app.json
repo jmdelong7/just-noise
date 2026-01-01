@@ -22,13 +22,22 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.justnoise.app"
+      "package": "com.justnoise.app",
+      "permissions": [
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "react-native-audio-api"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4f866ad6-0c68-4914-801e-632973583b24"
+      }
+    }
   }
 }
